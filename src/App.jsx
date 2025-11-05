@@ -565,7 +565,13 @@ const WordsView = ({
                 <input
                   type="text"
                   value={english}
-                  onChange={(e) => setEnglish(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Only allow English letters and spaces
+                    if (/^[a-zA-Z\s]*$/.test(value)) {
+                      setEnglish(value);
+                    }
+                  }}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   placeholder="e.g., Hello"
                 />
@@ -577,7 +583,13 @@ const WordsView = ({
                 <input
                   type="text"
                   value={georgian}
-                  onChange={(e) => setGeorgian(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Only allow Georgian letters and spaces
+                    if (/^[ა-ჰ\s]*$/.test(value)) {
+                      setGeorgian(value);
+                    }
+                  }}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   placeholder="e.g., გამარჯობა"
                 />
