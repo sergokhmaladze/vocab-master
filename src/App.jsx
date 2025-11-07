@@ -245,6 +245,23 @@ const VocabApp = () => {
     saveUserData(newWords, newCatalogs);
   };
 
+  const deleteAllWords = () => {
+    if (user && user.isSubscribed) {
+      setWords([]);
+      saveUserData([], catalogs);
+    } else {
+      setGuestWords([]);
+    }
+  };
+
+  const deleteWordsByCatalog = (catalogId) => {
+    if (!user || !user.isSubscribed) return;
+
+    const newWords = words.filter((w) => w.catalogId !== catalogId);
+    setWords(newWords);
+    saveUserData(newWords, catalogs);
+  };
+
   const activeWords = user && user.isSubscribed ? words : guestWords;
 
   if (loading) {
@@ -270,6 +287,8 @@ const VocabApp = () => {
             onAddWord={addWord}
             onDeleteWord={deleteWord}
             onUpdateWord={updateWord}
+            onDeleteAll={deleteAllWords}
+            onDeleteByCatalog={deleteWordsByCatalog}
             isGuest={!user || !user.isSubscribed}
             guestLimit={30}
           />
@@ -429,6 +448,8 @@ const WordsView = ({
   onAddWord,
   onDeleteWord,
   onUpdateWord,
+  onDeleteAll,
+  onDeleteByCatalog,
   isGuest,
   guestLimit,
 }) => {
@@ -439,6 +460,9 @@ const WordsView = ({
   const [selectedCatalog, setSelectedCatalog] = useState('');
   const [error, setError] = useState('');
   const [filterCatalog, setFilterCatalog] = useState('all');
+  const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
+  const [showDeleteCatalogConfirm, setShowDeleteCatalogConfirm] =
+    useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -492,6 +516,18 @@ const WordsView = ({
     setError('');
   };
 
+  const handleDeleteAll = () => {
+    onDeleteAll();
+    setShowDeleteAllConfirm(false);
+    setFilterCatalog('all');
+  };
+
+  const handleDeleteByCatalog = () => {
+    onDeleteByCatalog(filterCatalog);
+    setShowDeleteCatalogConfirm(false);
+    setFilterCatalog('all');
+  };
+
   const filteredWords =
     filterCatalog === 'all'
       ? words
@@ -511,34 +547,56 @@ const WordsView = ({
                 : `${words.length} words saved`}
             </p>
           </div>
-          <button
-            onClick={() => setShowAddForm(!showAddForm)}
-            disabled={isGuest && words.length >= guestLimit}
-            className="px-4 md:px-6 py-2 md:py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center space-x-2 text-sm md:text-base"
-          >
-            <Plus className="w-4 h-4 md:w-5 md:h-5" />
-            <span>Add Word</span>
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {words.length > 0 && (
+              <button
+                onClick={() => setShowDeleteAllConfirm(true)}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition flex items-center space-x-2 text-sm"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Delete All</span>
+              </button>
+            )}
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              disabled={isGuest && words.length >= guestLimit}
+              className="px-4 md:px-6 py-2 md:py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center space-x-2 text-sm md:text-base"
+            >
+              <Plus className="w-4 h-4 md:w-5 md:h-5" />
+              <span>Add Word</span>
+            </button>
+          </div>
         </div>
 
         {!isGuest && catalogs.length > 0 && (
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Filter by catalog:
-            </label>
-            <select
-              value={filterCatalog}
-              onChange={(e) => setFilterCatalog(e.target.value)}
-              className="w-full md:w-64 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-            >
-              <option value="all">All Words</option>
-              <option value="uncategorized">Uncategorized</option>
-              {catalogs.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
+          <div className="mb-4 flex items-end gap-3 flex-wrap">
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Filter by catalog:
+              </label>
+              <select
+                value={filterCatalog}
+                onChange={(e) => setFilterCatalog(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              >
+                <option value="all">All Words</option>
+                <option value="uncategorized">Uncategorized</option>
+                {catalogs.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {filterCatalog !== 'all' && filteredWords.length > 0 && (
+              <button
+                onClick={() => setShowDeleteCatalogConfirm(true)}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition flex items-center space-x-2 text-sm"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Delete from Catalog</span>
+              </button>
+            )}
           </div>
         )}
 
@@ -691,6 +749,73 @@ const WordsView = ({
           })
         )}
       </div>
+      {/* Delete All Confirmation Modal */}
+      {showDeleteAllConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <Trash2 className="w-6 h-6 text-red-600" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-800">
+                Delete All Words?
+              </h3>
+            </div>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete all {words.length} words? This
+              action cannot be undone.
+            </p>
+            <div className="flex space-x-3">
+              <button
+                onClick={handleDeleteAll}
+                className="flex-1 px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-semibold"
+              >
+                Yes, Delete All
+              </button>
+              <button
+                onClick={() => setShowDeleteAllConfirm(false)}
+                className="flex-1 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-semibold"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete by Catalog Confirmation Modal */}
+      {showDeleteCatalogConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <Trash2 className="w-6 h-6 text-red-600" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-800">
+                Delete Catalog Words?
+              </h3>
+            </div>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete all {filteredWords.length} words
+              from this catalog? This action cannot be undone.
+            </p>
+            <div className="flex space-x-3">
+              <button
+                onClick={handleDeleteByCatalog}
+                className="flex-1 px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-semibold"
+              >
+                Yes, Delete
+              </button>
+              <button
+                onClick={() => setShowDeleteCatalogConfirm(false)}
+                className="flex-1 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-semibold"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
