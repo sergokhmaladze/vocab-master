@@ -1102,25 +1102,6 @@ const PracticeView = ({ words, catalogs }) => {
     setCurrentWord(word);
   };
 
-  // const checkAnswer = () => {
-  //   if (!answer.trim() || !currentWord) return;
-
-  //   const isCorrect =
-  //     answer.trim().toLowerCase() === currentWord.georgian.toLowerCase();
-  //   setScore((prev) => ({
-  //     correct: prev.correct + (isCorrect ? 1 : 0),
-  //     total: prev.total + 1,
-  //   }));
-  //   setFeedback(isCorrect ? 'correct' : 'incorrect');
-
-  //   setTimeout(() => {
-  //     setAnswer('');
-  //     setFeedback(null);
-  //     const nextWord = getRandomWord();
-  //     setCurrentWord(nextWord);
-  //   }, 1500);
-  // };
-
   const checkAnswer = () => {
     if (!answer.trim() || !currentWord) return;
 
@@ -1276,8 +1257,7 @@ const PracticeView = ({ words, catalogs }) => {
               autoFocus
             />
 
-            {
-              /* {feedback === null ? (
+            {feedback === null ? (
               <button
                 onClick={checkAnswer}
                 disabled={!answer.trim()}
@@ -1286,83 +1266,44 @@ const PracticeView = ({ words, catalogs }) => {
                 Check Answer
               </button>
             ) : (
-              <div
-                className={`p-6 rounded-lg text-center ${
-                  feedback === 'correct' ? 'bg-green-50' : 'bg-red-50'
-                }`}
-              >
-                {feedback === 'correct' ? (
-                  <div className="flex items-center justify-center space-x-2">
-                    <Check className="w-8 h-8 text-green-600" />
-                    <span className="text-2xl font-bold text-green-700">
-                      Correct!
-                    </span>
-                  </div>
-                ) : (
-                  <div>
-                    <div className="flex items-center justify-center space-x-2 mb-2">
-                      <X className="w-8 h-8 text-red-600" />
-                      <span className="text-2xl font-bold text-red-700">
-                        Incorrect
+              <div>
+                <div
+                  className={`p-6 rounded-lg text-center mb-4 ${
+                    feedback === 'correct' ? 'bg-green-50' : 'bg-red-50'
+                  }`}
+                >
+                  {feedback === 'correct' ? (
+                    <div className="flex items-center justify-center space-x-2">
+                      <Check className="w-8 h-8 text-green-600" />
+                      <span className="text-2xl font-bold text-green-700">
+                        Correct!
                       </span>
                     </div>
-                    <p className="text-gray-700">
-                      Correct answer:{' '}
-                      <span className="font-bold text-xl">
-                        {currentWord.georgian}
-                      </span>
-                    </p>
-                  </div>
-                )}
-              </div>
-            )} */ feedback === null ? (
-                <button
-                  onClick={checkAnswer}
-                  disabled={!answer.trim()}
-                  className="w-full px-6 py-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed text-lg font-semibold"
-                >
-                  Check Answer
-                </button>
-              ) : (
-                <div>
-                  <div
-                    className={`p-6 rounded-lg text-center mb-4 ${
-                      feedback === 'correct' ? 'bg-green-50' : 'bg-red-50'
-                    }`}
-                  >
-                    {feedback === 'correct' ? (
-                      <div className="flex items-center justify-center space-x-2">
-                        <Check className="w-8 h-8 text-green-600" />
-                        <span className="text-2xl font-bold text-green-700">
-                          Correct!
+                  ) : (
+                    <div>
+                      <div className="flex items-center justify-center space-x-2 mb-2">
+                        <X className="w-8 h-8 text-red-600" />
+                        <span className="text-2xl font-bold text-red-700">
+                          Incorrect
                         </span>
                       </div>
-                    ) : (
-                      <div>
-                        <div className="flex items-center justify-center space-x-2 mb-2">
-                          <X className="w-8 h-8 text-red-600" />
-                          <span className="text-2xl font-bold text-red-700">
-                            Incorrect
-                          </span>
-                        </div>
-                        <p className="text-gray-700">
-                          Correct answer:{' '}
-                          <span className="font-bold text-xl">
-                            {currentWord.georgian}
-                          </span>
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    onClick={goToNextWord}
-                    className="w-full px-6 py-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-lg font-semibold"
-                  >
-                    Next Word →
-                  </button>
+                      <p className="text-gray-700">
+                        Correct answer:{' '}
+                        <span className="font-bold text-xl">
+                          {currentWord.georgian}
+                        </span>
+                      </p>
+                    </div>
+                  )}
                 </div>
-              )
-            }
+                <button
+                  onClick={goToNextWord}
+                  className="w-full px-6 py-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-lg font-semibold"
+                >
+                  Next Word →
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
