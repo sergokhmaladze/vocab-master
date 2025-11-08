@@ -308,7 +308,7 @@ const VocabApp = () => {
           <PracticeView words={activeWords} catalogs={catalogs} />
         )}
 
-        {currentView === 'auth' && <AuthView />}
+        {currentView === 'auth' && <AuthView setCurrentView={setCurrentView} />}
 
         {currentView === 'subscription' && <SubscriptionView />}
       </main>
@@ -1298,7 +1298,7 @@ const PracticeView = ({ words, catalogs }) => {
 };
 
 // Auth View
-const AuthView = () => {
+const AuthView = ({ setCurrentView }) => {
   const { login, register } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
@@ -1325,6 +1325,9 @@ const AuthView = () => {
 
     if (!result.success) {
       setError(result.error);
+    } else {
+      // წარმატებული შესვლის შემდეგ გადავდივართ My Words გვერდზე
+      setCurrentView('words');
     }
   };
 
