@@ -131,12 +131,25 @@ const VocabApp = () => {
   const [words, setWords] = useState([]);
   const [catalogs, setCatalogs] = useState([]);
   const [loadingData, setLoadingData] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('darkMode');
+    return saved === 'true';
+  });
 
   useEffect(() => {
     if (user && user.isSubscribed) {
       loadUserData();
     }
   }, [user]);
+
+  useEffect(() => {
+    localStorage.setItem('darkMode', darkMode);
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
 
   const loadUserData = () => {
     if (!user || !user.isSubscribed) return;
@@ -273,8 +286,19 @@ const VocabApp = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <Header currentView={currentView} setCurrentView={setCurrentView} />
+    <div
+      className={`min-h-screen transition-colors duration-300 ${
+        darkMode
+          ? 'bg-gradient-to-br from-gray-900 to-gray-800'
+          : 'bg-gradient-to-br from-blue-50 to-indigo-100'
+      }`}
+    >
+      <Header
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        darkMode={darkMode}
+        setDarkMode={setDarkMode}
+      />
 
       <main className="container mx-auto px-4 py-8 max-w-6xl">
         {!user && <GuestBanner wordCount={guestWords.length} />}
@@ -317,27 +341,72 @@ const VocabApp = () => {
 };
 
 // Header Component
-const Header = ({ currentView, setCurrentView }) => {
+const Header = ({ currentView, setCurrentView, darkMode, setDarkMode }) => {
   const { user, logout } = useAuth();
 
   return (
-    <header className="bg-white shadow-md">
+    <header
+      className={`shadow-md transition-colors duration-300 ${
+        darkMode ? 'bg-gray-800' : 'bg-white'
+      }`}
+    >
       <div className="container mx-auto px-4 py-4 max-w-6xl">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center space-x-2">
-            <Book className="w-8 h-8 text-indigo-600" />
-            <h1 className="text-2xl font-bold text-gray-800">VocabMaster</h1>
+            <Book
+              className={`w-8 h-8 ${
+                darkMode ? 'text-indigo-400' : 'text-indigo-600'
+              }`}
+            />
+            <h1
+              className={`text-2xl font-bold ${
+                darkMode ? 'text-white' : 'text-gray-800'
+              }`}
+            >
+              VocabMaster
+            </h1>
             {user && user.isSubscribed && (
               <Crown className="w-5 h-5 text-yellow-500" />
             )}
           </div>
 
           <nav className="flex items-center space-x-2 md:space-x-4 flex-wrap">
+            {/* Dark Mode Toggle */}
+            <button
+              onClick={() => setDarkMode(!darkMode)}
+              className={`p-2 rounded-lg transition ${
+                darkMode
+                  ? 'bg-gray-700 text-yellow-400 hover:bg-gray-600'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+              title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            >
+              {darkMode ? (
+                <svg
+                  className="w-5 h-5"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" />
+                </svg>
+              ) : (
+                <svg
+                  className="w-5 h-5"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
+                </svg>
+              )}
+            </button>
+
             <button
               onClick={() => setCurrentView('words')}
               className={`px-3 md:px-4 py-2 rounded-lg transition text-sm md:text-base ${
                 currentView === 'words'
                   ? 'bg-indigo-600 text-white'
+                  : darkMode
+                  ? 'text-gray-300 hover:bg-gray-700'
                   : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
@@ -371,7 +440,11 @@ const Header = ({ currentView, setCurrentView }) => {
 
             {user ? (
               <div className="flex items-center space-x-2 md:space-x-3">
-                <span className="text-xs md:text-sm text-gray-600 hidden sm:inline">
+                <span
+                  className={`text-xs md:text-sm hidden sm:inline ${
+                    darkMode ? 'text-gray-300' : 'text-gray-600'
+                  }`}
+                >
                   {user.email}
                 </span>
                 {!user.isSubscribed && (
