@@ -112,9 +112,27 @@ const AuthProvider = ({ children }) => {
     }
   };
 
+  const unsubscribe = () => {
+    if (!user) return;
+
+    const updatedUser = {
+      ...user,
+      isSubscribed: false,
+      subscriptionExpiry: null,
+    };
+
+    try {
+      localStorage.setItem(user.id, JSON.stringify(updatedUser));
+      localStorage.setItem('current_user', JSON.stringify(updatedUser));
+      setUser(updatedUser);
+    } catch (error) {
+      console.error('Unsubscribe failed');
+    }
+  };
+
   return (
     <AuthContext.Provider
-      value={{ user, login, register, logout, subscribe, loading }}
+      value={{ user, login, register, logout, subscribe, unsubscribe, loading }}
     >
       {children}
     </AuthContext.Provider>
@@ -423,6 +441,21 @@ const Header = ({ currentView, setCurrentView, darkMode, setDarkMode }) => {
                 }`}
               >
                 Catalogs
+              </button>
+            )}
+
+            {user && user.isSubscribed && (
+              <button
+                onClick={() => setCurrentView('subscription')}
+                className={`px-3 md:px-4 py-2 rounded-lg transition text-sm md:text-base ${
+                  currentView === 'subscription'
+                    ? 'bg-indigo-600 text-white'
+                    : darkMode
+                    ? 'text-gray-300 hover:bg-gray-700'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                Account
               </button>
             )}
 
@@ -1422,8 +1455,9 @@ const AuthView = ({ setCurrentView }) => {
 
 // Subscription View
 const SubscriptionView = () => {
-  const { subscribe, user } = useAuth();
+  const { subscribe, unsubscribe, user } = useAuth();
   const [showPayment, setShowPayment] = useState(false);
+  const [showUnsubscribeConfirm, setShowUnsubscribeConfirm] = useState(false);
   const [cardNumber, setCardNumber] = useState('');
   const [processing, setProcessing] = useState(false);
 
@@ -1437,6 +1471,11 @@ const SubscriptionView = () => {
     }, 2000);
   };
 
+  const handleUnsubscribe = () => {
+    unsubscribe();
+    setShowUnsubscribeConfirm(false);
+  };
+
   if (user && user.isSubscribed) {
     return (
       <div className="max-w-2xl mx-auto">
@@ -1445,10 +1484,59 @@ const SubscriptionView = () => {
           <h2 className="text-3xl font-bold text-gray-800 mb-2">
             Premium Active
           </h2>
-          <p className="text-gray-600">
+          <p className="text-gray-600 mb-6">
             You have unlimited access to all features!
           </p>
+          <button
+            onClick={() => setShowUnsubscribeConfirm(true)}
+            className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-semibold"
+          >
+            Cancel Subscription
+          </button>
         </div>
+
+        {/* Unsubscribe Confirmation Modal */}
+        {showUnsubscribeConfirm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full">
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                  <AlertCircle className="w-6 h-6 text-red-600" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-800">
+                  Cancel Subscription?
+                </h3>
+              </div>
+              <p className="text-gray-600 mb-4">
+                Are you sure you want to cancel your premium subscription?
+              </p>
+              <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+                <p className="text-sm text-yellow-800">
+                  <strong>Warning:</strong> You will lose access to:
+                </p>
+                <ul className="list-disc list-inside text-sm text-yellow-700 mt-2 space-y-1">
+                  <li>Unlimited word storage</li>
+                  <li>Custom catalogs</li>
+                  <li>Persistent data storage</li>
+                </ul>
+              </div>
+              <div className="flex space-x-3">
+                <button
+                  onClick={handleUnsubscribe}
+                  className="flex-1 px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-semibold"
+                >
+                  Yes, Cancel Subscription
+                </button>
+                <button
+                  onClick={() => setShowUnsubscribeConfirm(false)}
+                  className="flex-1 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-semibold"
+                >
+                  Keep Subscription
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
