@@ -12,6 +12,7 @@ import {
   Check,
   AlertCircle,
 } from 'lucide-react';
+import { supabase } from './supabaseClient';
 
 // Authentication Context
 const AuthContext = createContext();
