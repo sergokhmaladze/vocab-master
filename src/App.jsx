@@ -22,112 +22,115 @@ const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const checkAuth = () => {
-      try {
-        const result = localStorage.getItem('current_user');
-        if (result) {
-          const userData = JSON.parse(result);
-          setUser(userData);
-        }
-      } catch (error) {
-        console.log('No user logged in');
+    // Check active session on mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        loadUserProfile(session.user.id);
       }
       setLoading(false);
-    };
-    checkAuth();
+    });
+
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session) {
+        await loadUserProfile(session.user.id);
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const login = (email, password) => {
-    try {
-      const userKey = `user_${email.replace(/[^a-zA-Z0-9]/g, '_')}`;
-      const result = localStorage.getItem(userKey);
+  const loadUserProfile = async (userId) => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
 
-      if (result) {
-        const userData = JSON.parse(result);
-        if (userData.password === password) {
-          setUser(userData);
-          localStorage.setItem('current_user', JSON.stringify(userData));
-          return { success: true };
-        }
-        return { success: false, error: 'Invalid password' };
+    if (data) {
+      setUser({
+        id: userId,
+        email: data.email,
+        isSubscribed: data.is_subscribed || false,
+        subscriptionExpiry: data.subscription_expiry,
+      });
+    }
+  };
+
+  const login = async (email, password) => {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        return { success: false, error: error.message };
       }
-      return { success: false, error: 'User not found' };
+
+      return { success: true };
     } catch (error) {
       return { success: false, error: 'Login failed' };
     }
   };
 
-  const register = (email, password) => {
+  const register = async (email, password) => {
     try {
-      const userKey = `user_${email.replace(/[^a-zA-Z0-9]/g, '_')}`;
-
-      const existing = localStorage.getItem(userKey);
-      if (existing) {
-        return { success: false, error: 'User already exists' };
-      }
-
-      const userData = {
-        id: userKey,
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        isSubscribed: false,
-        subscriptionExpiry: null,
-        createdAt: new Date().toISOString(),
-      };
+      });
 
-      localStorage.setItem(userKey, JSON.stringify(userData));
-      setUser(userData);
-      localStorage.setItem('current_user', JSON.stringify(userData));
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
       return { success: true };
     } catch (error) {
       return { success: false, error: 'Registration failed' };
     }
   };
 
-  const logout = () => {
-    try {
-      localStorage.removeItem('current_user');
-    } catch (error) {
-      console.log('Logout cleanup failed');
-    }
+  const logout = async () => {
+    await supabase.auth.signOut();
     setUser(null);
   };
 
-  const subscribe = () => {
+  const subscribe = async () => {
     if (!user) return;
 
-    const updatedUser = {
-      ...user,
-      isSubscribed: true,
-      subscriptionExpiry: new Date(
-        Date.now() + 365 * 24 * 60 * 60 * 1000
-      ).toISOString(),
-    };
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        is_subscribed: true,
+        subscription_expiry: new Date(
+          Date.now() + 365 * 24 * 60 * 60 * 1000
+        ).toISOString(),
+      })
+      .eq('id', user.id);
 
-    try {
-      localStorage.setItem(user.id, JSON.stringify(updatedUser));
-      localStorage.setItem('current_user', JSON.stringify(updatedUser));
-      setUser(updatedUser);
-    } catch (error) {
-      console.error('Subscription update failed');
+    if (!error) {
+      await loadUserProfile(user.id);
     }
   };
 
-  const unsubscribe = () => {
+  const unsubscribe = async () => {
     if (!user) return;
 
-    const updatedUser = {
-      ...user,
-      isSubscribed: false,
-      subscriptionExpiry: null,
-    };
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        is_subscribed: false,
+        subscription_expiry: null,
+      })
+      .eq('id', user.id);
 
-    try {
-      localStorage.setItem(user.id, JSON.stringify(updatedUser));
-      localStorage.setItem('current_user', JSON.stringify(updatedUser));
-      setUser(updatedUser);
-    } catch (error) {
-      console.error('Unsubscribe failed');
+    if (!error) {
+      await loadUserProfile(user.id);
     }
   };
 
@@ -170,76 +173,97 @@ const VocabApp = () => {
     }
   }, [darkMode]);
 
-  const loadUserData = () => {
+  const loadUserData = async () => {
     if (!user || !user.isSubscribed) return;
 
     setLoadingData(true);
-    try {
-      const wordsResult = localStorage.getItem(`${user.id}_words`);
-      if (wordsResult) {
-        setWords(JSON.parse(wordsResult));
-      }
 
-      const catalogsResult = localStorage.getItem(`${user.id}_catalogs`);
-      if (catalogsResult) {
-        setCatalogs(JSON.parse(catalogsResult));
-      }
-    } catch (error) {
-      console.log('No saved data found');
+    // Load Words
+    const { data: wordsData, error: wordsError } = await supabase
+      .from('words')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (!wordsError && wordsData) {
+      setWords(wordsData);
     }
+
+    // Load Catalogs
+    const { data: catalogsData, error: catalogsError } = await supabase
+      .from('catalogs')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (!catalogsError && catalogsData) {
+      setCatalogs(catalogsData);
+    }
+
     setLoadingData(false);
   };
 
-  const saveUserData = (newWords, newCatalogs) => {
-    if (!user || !user.isSubscribed) return;
-
-    try {
-      localStorage.setItem(`${user.id}_words`, JSON.stringify(newWords));
-      localStorage.setItem(`${user.id}_catalogs`, JSON.stringify(newCatalogs));
-    } catch (error) {
-      console.error('Failed to save data');
-    }
-  };
-
-  const addWord = (english, georgian, catalogId = null) => {
-    const newWord = {
-      id: Date.now().toString(),
-      english,
-      georgian,
-      catalogId,
-      createdAt: new Date().toISOString(),
-    };
-
+  const addWord = async (english, georgian, catalogId = null) => {
     if (user && user.isSubscribed) {
-      const newWords = [...words, newWord];
-      setWords(newWords);
-      saveUserData(newWords, catalogs);
+      const { data, error } = await supabase
+        .from('words')
+        .insert([
+          {
+            user_id: user.id,
+            english,
+            georgian,
+            catalog_id: catalogId,
+          },
+        ])
+        .select()
+        .single();
+
+      if (!error && data) {
+        setWords([data, ...words]);
+        return { success: true };
+      }
+      return { success: false, error: error?.message || 'Failed to add word' };
     } else {
+      // Guest logic remains the same
       if (guestWords.length >= 30) {
         return { success: false, error: 'Guest limit reached (30 words)' };
       }
+      const newWord = {
+        id: Date.now().toString(),
+        english,
+        georgian,
+        catalogId,
+        createdAt: new Date().toISOString(),
+      };
       setGuestWords([...guestWords, newWord]);
+      return { success: true };
     }
-    return { success: true };
   };
 
-  const deleteWord = (wordId) => {
+  const deleteWord = async (wordId) => {
     if (user && user.isSubscribed) {
-      const newWords = words.filter((w) => w.id !== wordId);
-      setWords(newWords);
-      saveUserData(newWords, catalogs);
+      const { error } = await supabase.from('words').delete().eq('id', wordId);
+
+      if (!error) {
+        setWords(words.filter((w) => w.id !== wordId));
+      }
     } else {
       setGuestWords(guestWords.filter((w) => w.id !== wordId));
     }
   };
 
-  const updateWord = (wordId, english, georgian, catalogId) => {
+  const updateWord = async (wordId, english, georgian, catalogId) => {
     if (user && user.isSubscribed) {
-      const newWords = words.map((w) =>
-        w.id === wordId ? { ...w, english, georgian, catalogId } : w
-      );
-      setWords(newWords);
-      saveUserData(newWords, catalogs);
+      const { data, error } = await supabase
+        .from('words')
+        .update({ english, georgian, catalog_id: catalogId })
+        .eq('id', wordId)
+        .select()
+        .single();
+
+      if (!error && data) {
+        setWords(words.map((w) => (w.id === wordId ? data : w)));
+      }
     } else {
       setGuestWords(
         guestWords.map((w) =>
@@ -249,49 +273,79 @@ const VocabApp = () => {
     }
   };
 
-  const addCatalog = (name, color) => {
+  const addCatalog = async (name, color) => {
     if (!user || !user.isSubscribed) return;
 
-    const newCatalog = {
-      id: Date.now().toString(),
-      name,
-      color,
-      createdAt: new Date().toISOString(),
-    };
+    const { data, error } = await supabase
+      .from('catalogs')
+      .insert([
+        {
+          user_id: user.id,
+          name,
+          color,
+        },
+      ])
+      .select()
+      .single();
 
-    const newCatalogs = [...catalogs, newCatalog];
-    setCatalogs(newCatalogs);
-    saveUserData(words, newCatalogs);
+    if (!error && data) {
+      setCatalogs([data, ...catalogs]);
+    }
   };
 
-  const deleteCatalog = (catalogId) => {
+  const deleteCatalog = async (catalogId) => {
     if (!user || !user.isSubscribed) return;
 
-    const newCatalogs = catalogs.filter((c) => c.id !== catalogId);
-    const newWords = words.map((w) =>
-      w.catalogId === catalogId ? { ...w, catalogId: null } : w
-    );
+    const { error } = await supabase
+      .from('catalogs')
+      .delete()
+      .eq('id', catalogId);
 
-    setCatalogs(newCatalogs);
-    setWords(newWords);
-    saveUserData(newWords, newCatalogs);
+    if (!error) {
+      setCatalogs(catalogs.filter((c) => c.id !== catalogId));
+
+      // Update words to remove catalog reference
+      const { error: updateError } = await supabase
+        .from('words')
+        .update({ catalog_id: null })
+        .eq('catalog_id', catalogId);
+
+      if (!updateError) {
+        setWords(
+          words.map((w) =>
+            w.catalog_id === catalogId ? { ...w, catalog_id: null } : w
+          )
+        );
+      }
+    }
   };
 
-  const deleteAllWords = () => {
+  const deleteAllWords = async () => {
     if (user && user.isSubscribed) {
-      setWords([]);
-      saveUserData([], catalogs);
+      const { error } = await supabase
+        .from('words')
+        .delete()
+        .eq('user_id', user.id);
+
+      if (!error) {
+        setWords([]);
+      }
     } else {
       setGuestWords([]);
     }
   };
 
-  const deleteWordsByCatalog = (catalogId) => {
+  const deleteWordsByCatalog = async (catalogId) => {
     if (!user || !user.isSubscribed) return;
 
-    const newWords = words.filter((w) => w.catalogId !== catalogId);
-    setWords(newWords);
-    saveUserData(newWords, catalogs);
+    const { error } = await supabase
+      .from('words')
+      .delete()
+      .eq('catalog_id', catalogId);
+
+    if (!error) {
+      setWords(words.filter((w) => w.catalog_id !== catalogId));
+    }
   };
 
   const activeWords = user && user.isSubscribed ? words : guestWords;
@@ -610,7 +664,7 @@ const WordsView = ({
     setEditingWord(word);
     setEnglish(word.english);
     setGeorgian(word.georgian);
-    setSelectedCatalog(word.catalogId || '');
+    setSelectedCatalog(word.catalog_id || '');
     setShowAddForm(true);
   };
 
@@ -639,8 +693,8 @@ const WordsView = ({
     filterCatalog === 'all'
       ? words
       : filterCatalog === 'uncategorized'
-      ? words.filter((w) => !w.catalogId)
-      : words.filter((w) => w.catalogId === filterCatalog);
+      ? words.filter((w) => !w.catalog_id)
+      : words.filter((w) => w.catalog_id === filterCatalog);
 
   return (
     <div className="space-y-6">
@@ -810,7 +864,7 @@ const WordsView = ({
           </div>
         ) : (
           filteredWords.map((word) => {
-            const catalog = catalogs.find((c) => c.id === word.catalogId);
+            const catalog = catalogs.find((c) => c.id === word.catalog_id);
             return (
               <div
                 key={word.id}
@@ -1064,7 +1118,7 @@ const CatalogsView = ({
         ) : (
           catalogs.map((catalog) => {
             const wordCount = words.filter(
-              (w) => w.catalogId === catalog.id
+              (w) => w.catalog_id === catalog.id
             ).length;
             return (
               <div
@@ -1107,8 +1161,8 @@ const PracticeView = ({ words, catalogs }) => {
     selectedCatalog === 'all'
       ? words
       : selectedCatalog === 'uncategorized'
-      ? words.filter((w) => !w.catalogId)
-      : words.filter((w) => w.catalogId === selectedCatalog);
+      ? words.filter((w) => !w.catalog_id)
+      : words.filter((w) => w.catalog_id === selectedCatalog);
 
   const getRandomWord = () => {
     const availableWords = practiceWords.filter(
@@ -1199,7 +1253,7 @@ const PracticeView = ({ words, catalogs }) => {
               Uncategorized ({words.filter((w) => !w.catalogId).length})
             </option>
             {catalogs.map((cat) => {
-              const count = words.filter((w) => w.catalogId === cat.id).length;
+              const count = words.filter((w) => w.catalog_id === cat.id).length;
               return (
                 <option key={cat.id} value={cat.id}>
                   {cat.name} ({count})
