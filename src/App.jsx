@@ -21,75 +21,40 @@ const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let authSubscription = null;
+  // 2025 წლის სწორი ლოკალური JWT decode (მუშაობს v2.39+)
+  const getUserFromLocalStorage = () => {
+    try {
+      const sessionData = localStorage.getItem('supabase.auth.token');
+      if (!sessionData) return null;
 
-    const initAuth = async () => {
-      try {
-        // 1. ვიღებთ მიმდინარე სესიას
-        const {
-          data: { session },
-          error,
-        } = await supabase.auth.getSession();
+      const { currentSession } = JSON.parse(sessionData);
+      if (!currentSession?.access_token) return null;
 
-        if (error) throw error;
-
-        if (session?.user) {
-          await loadUserProfile(session.user);
-        } else {
-          setUser(null);
-        }
-      } catch (err) {
-        console.error('Initial session error:', err);
-        setUser(null);
-      } finally {
-        // აუცილებლად ვასრულებთ loading-ს!
-        setLoading(false);
-      }
-
-      // 2. ვუსმენთ ავტორიზაციის ცვლილებებს (მხოლოდ ერთხელ!)
-      const { data: listener } = supabase.auth.onAuthStateChange(
-        async (event, session) => {
-          console.log('Auth event:', event);
-
-          if (
-            event === 'SIGNED_OUT' ||
-            event === 'USER_DELETED' ||
-            !session?.user
-          ) {
-            setUser(null);
-            return;
-          }
-
-          if (session?.user) {
-            await loadUserProfile(session.user);
-          }
-        }
+      const payload = JSON.parse(
+        atob(currentSession.access_token.split('.')[1])
       );
 
-      authSubscription = listener.subscription;
-    };
+      // თუ ტოკენი გასულია ვადა
+      if (payload.exp * 1000 < Date.now()) return null;
 
-    initAuth();
+      return {
+        id: payload.sub,
+        email: payload.email,
+      };
+    } catch (err) {
+      return null;
+    }
+  };
 
-    // Cleanup – გამორთვა გაუქმებისას
-    return () => {
-      authSubscription?.unsubscribe?.();
-    };
-  }, []); // მხოლოდ ერთხელ mount-ზე
-
-  // გამყარებული loadUserProfile
   const loadUserProfile = async (authUser) => {
     try {
       const { data: profile, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', authUser.id)
-        .maybeSingle(); // ← არ აგდებს ერორს თუ არ არის row
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') {
-        throw error;
-      }
+      if (error && error.code !== 'PGRST116') throw error;
 
       if (profile) {
         setUser({
@@ -99,7 +64,6 @@ const AuthProvider = ({ children }) => {
           subscriptionExpiry: profile.subscription_expiry,
         });
       } else {
-        // თუ profile არ არსებობს – ვქმნით მინიმალურ user-ს
         setUser({
           id: authUser.id,
           email: authUser.email,
@@ -107,7 +71,6 @@ const AuthProvider = ({ children }) => {
           subscriptionExpiry: null,
         });
 
-        // ავტომატურად ვქმნით profiles row-ს (რომ მომავალში პრობლემა არ იყოს)
         await supabase.from('profiles').upsert(
           {
             id: authUser.id,
@@ -128,6 +91,58 @@ const AuthProvider = ({ children }) => {
       });
     }
   };
+
+  useEffect(() => {
+    let authSubscription = null;
+
+    const initAuth = async () => {
+      // 1. მყისიერი ლოკალური JWT (30–80 ms საქართველოდან)
+      const localUser = getUserFromLocalStorage();
+      if (localUser) {
+        await loadUserProfile(localUser);
+        setLoading(false);
+        console.log('User loaded instantly from localStorage');
+      }
+
+      // 2. Fallback – სერვერიდან განახლება (თუ ტოკენი expired ან არ არსებობს)
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (session?.user) {
+          await loadUserProfile(session.user);
+        } else if (!localUser) {
+          setUser(null);
+        }
+      } catch (err) {
+        console.warn('getSession failed:', err);
+        if (!localUser) setUser(null);
+      } finally {
+        setLoading(false);
+      }
+
+      // 3. მოვუსმინოთ ცვლილებებს
+      const { data: listener } = supabase.auth.onAuthStateChange(
+        async (event, session) => {
+          if (event === 'SIGNED_OUT' || !session?.user) {
+            setUser(null);
+            return;
+          }
+          if (session?.user) {
+            await loadUserProfile(session.user);
+          }
+        }
+      );
+
+      authSubscription = listener.subscription;
+    };
+
+    initAuth();
+
+    return () => {
+      authSubscription?.unsubscribe?.();
+    };
+  }, []);
 
   const login = async (email, password) => {
     try {
