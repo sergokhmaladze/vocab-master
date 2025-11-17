@@ -22,41 +22,109 @@ const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check active session on mount
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        loadUserProfile(session.user.id);
-      }
-      setLoading(false);
-    });
+    let authSubscription = null;
 
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session) {
-        await loadUserProfile(session.user.id);
-      } else {
+    const initAuth = async () => {
+      try {
+        // 1. ვიღებთ მიმდინარე სესიას
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
+
+        if (error) throw error;
+
+        if (session?.user) {
+          await loadUserProfile(session.user);
+        } else {
+          setUser(null);
+        }
+      } catch (err) {
+        console.error('Initial session error:', err);
         setUser(null);
+      } finally {
+        // აუცილებლად ვასრულებთ loading-ს!
+        setLoading(false);
       }
-    });
 
-    return () => subscription.unsubscribe();
-  }, []);
+      // 2. ვუსმენთ ავტორიზაციის ცვლილებებს (მხოლოდ ერთხელ!)
+      const { data: listener } = supabase.auth.onAuthStateChange(
+        async (event, session) => {
+          console.log('Auth event:', event);
 
-  const loadUserProfile = async (userId) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
+          if (
+            event === 'SIGNED_OUT' ||
+            event === 'USER_DELETED' ||
+            !session?.user
+          ) {
+            setUser(null);
+            return;
+          }
 
-    if (data) {
+          if (session?.user) {
+            await loadUserProfile(session.user);
+          }
+        }
+      );
+
+      authSubscription = listener.subscription;
+    };
+
+    initAuth();
+
+    // Cleanup – გამორთვა გაუქმებისას
+    return () => {
+      authSubscription?.unsubscribe?.();
+    };
+  }, []); // მხოლოდ ერთხელ mount-ზე
+
+  // გამყარებული loadUserProfile
+  const loadUserProfile = async (authUser) => {
+    try {
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authUser.id)
+        .maybeSingle(); // ← არ აგდებს ერორს თუ არ არის row
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      if (profile) {
+        setUser({
+          id: authUser.id,
+          email: profile.email || authUser.email,
+          isSubscribed: !!profile.is_subscribed,
+          subscriptionExpiry: profile.subscription_expiry,
+        });
+      } else {
+        // თუ profile არ არსებობს – ვქმნით მინიმალურ user-ს
+        setUser({
+          id: authUser.id,
+          email: authUser.email,
+          isSubscribed: false,
+          subscriptionExpiry: null,
+        });
+
+        // ავტომატურად ვქმნით profiles row-ს (რომ მომავალში პრობლემა არ იყოს)
+        await supabase.from('profiles').upsert(
+          {
+            id: authUser.id,
+            email: authUser.email,
+            is_subscribed: false,
+            subscription_expiry: null,
+          },
+          { onConflict: 'id' }
+        );
+      }
+    } catch (err) {
+      console.error('Profile load error:', err);
       setUser({
-        id: userId,
-        email: data.email,
-        isSubscribed: data.is_subscribed || false,
-        subscriptionExpiry: data.subscription_expiry,
+        id: authUser.id,
+        email: authUser.email,
+        isSubscribed: false,
+        subscriptionExpiry: null,
       });
     }
   };
@@ -89,6 +157,13 @@ const AuthProvider = ({ children }) => {
         return { success: false, error: error.message };
       }
 
+      if (data?.user && !data.session) {
+        return {
+          success: true,
+          message: 'Check your email to confirm registration',
+        };
+      }
+
       return { success: true };
     } catch (error) {
       return { success: false, error: 'Registration failed' };
@@ -96,41 +171,56 @@ const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      setUser(null);
+      // 👇 Force reload to clear any stuck state
+      window.location.href = '/';
+    }
   };
 
   const subscribe = async () => {
     if (!user) return;
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        is_subscribed: true,
-        subscription_expiry: new Date(
-          Date.now() + 365 * 24 * 60 * 60 * 1000
-        ).toISOString(),
-      })
-      .eq('id', user.id);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          is_subscribed: true,
+          subscription_expiry: new Date(
+            Date.now() + 365 * 24 * 60 * 60 * 1000
+          ).toISOString(),
+        })
+        .eq('id', user.id);
 
-    if (!error) {
-      await loadUserProfile(user.id);
+      if (!error) {
+        await loadUserProfile(user.id);
+      }
+    } catch (err) {
+      console.error('Subscribe error:', err);
     }
   };
 
   const unsubscribe = async () => {
     if (!user) return;
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        is_subscribed: false,
-        subscription_expiry: null,
-      })
-      .eq('id', user.id);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          is_subscribed: false,
+          subscription_expiry: null,
+        })
+        .eq('id', user.id);
 
-    if (!error) {
-      await loadUserProfile(user.id);
+      if (!error) {
+        await loadUserProfile(user.id);
+      }
+    } catch (err) {
+      console.error('Unsubscribe error:', err);
     }
   };
 
