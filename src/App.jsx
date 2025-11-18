@@ -212,7 +212,13 @@ const AuthProvider = ({ children }) => {
         .eq('id', user.id);
 
       if (!error) {
-        await loadUserProfile(user.id);
+        // სწორი გზა – ვაიძულებთ სრულად განვაახლოთ user მდგომარეობა
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (session?.user) {
+          await loadUserProfile(session.user); // ← აუცილებელია!
+        }
       }
     } catch (err) {
       console.error('Subscribe error:', err);
@@ -232,7 +238,12 @@ const AuthProvider = ({ children }) => {
         .eq('id', user.id);
 
       if (!error) {
-        await loadUserProfile(user.id);
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (session?.user) {
+          await loadUserProfile(session.user); // ← აუცილებელია!
+        }
       }
     } catch (err) {
       console.error('Unsubscribe error:', err);
@@ -1623,12 +1634,9 @@ const SubscriptionView = () => {
 
   const handleSubscribe = async () => {
     setProcessing(true);
-
-    setTimeout(async () => {
-      await subscribe();
-      setProcessing(false);
-      setShowPayment(false);
-    }, 2000);
+    await subscribe();
+    setProcessing(false);
+    setShowPayment(false);
   };
 
   const handleUnsubscribe = () => {
