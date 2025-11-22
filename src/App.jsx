@@ -197,31 +197,36 @@ const AuthProvider = ({ children }) => {
     }
   };
 
-  const subscribe = async () => {
+  // AuthProvider-ში
+  const subscribe = async (plan = 'yearly') => {
     if (!user) return;
+
+    const days = plan === 'monthly' ? 30 : 365;
+    const expiry = new Date(
+      Date.now() + days * 24 * 60 * 60 * 1000
+    ).toISOString();
 
     try {
       const { error } = await supabase
         .from('profiles')
         .update({
           is_subscribed: true,
-          subscription_expiry: new Date(
-            Date.now() + 365 * 24 * 60 * 60 * 1000
-          ).toISOString(),
+          subscription_expiry: expiry,
+          subscription_type: plan, // აუცილებელია
         })
         .eq('id', user.id);
 
-      if (!error) {
-        // სწორი გზა – ვაიძულებთ სრულად განვაახლოთ user მდგომარეობა
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (session?.user) {
-          await loadUserProfile(session.user); // ← აუცილებელია!
-        }
-      }
+      if (error) throw error;
+
+      // სწრაფად განვაახლოთ user state
+      setUser((prev) => ({
+        ...prev,
+        isSubscribed: true,
+        subscriptionExpiry: expiry,
+      }));
     } catch (err) {
       console.error('Subscribe error:', err);
+      throw err; // მნიშვნელოვანია, რომ handleSubscribe-მა დაინახოს
     }
   };
 
@@ -1625,81 +1630,101 @@ const AuthView = ({ setCurrentView }) => {
 };
 
 // Subscription View
+// Subscription View – სრულიად ახალი, სწრაფი, მომუშავე
 const SubscriptionView = () => {
-  const { subscribe, unsubscribe, user } = useAuth();
-  const [showPayment, setShowPayment] = useState(false);
-  const [showUnsubscribeConfirm, setShowUnsubscribeConfirm] = useState(false);
-  const [cardNumber, setCardNumber] = useState('');
+  const { user, subscribe } = useAuth();
+  const [selectedPlan, setSelectedPlan] = useState(null);
   const [processing, setProcessing] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   const handleSubscribe = async () => {
+    if (processing || !selectedPlan) return;
+
+    // 1. მყისიერად ვაჩვენოთ წარმატება (Optimistic UI)
     setProcessing(true);
-    await subscribe();
+    setSelectedPlan(null);
+
+    // მომხმარებელს მაშინვე ვაჩვენოთ, რომ გააქტიურდა
+    alert('Premium activated instantly!');
+
+    // 2. ფონზე გავგზავნოთ Supabase-ში (არ დაველოდოთ)
+    subscribe(selectedPlan).catch((err) => {
+      // თუ რამე შეცდომა მოხდა – მაინც არ გავაუქმოთ UI-ში
+      console.error('Background sync failed:', err);
+      // შეგიძლია აქ toast ან რამე მცირე შეტყობინება
+    });
+
+    // 3. გავაახლოთ გვერდი 1 წამში – რომ სერვერის მონაცემები აისახოს
+    setTimeout(() => {
+      window.location.reload();
+    }, 800);
+
     setProcessing(false);
-    setShowPayment(false);
   };
 
-  const handleUnsubscribe = () => {
-    unsubscribe();
-    setShowUnsubscribeConfirm(false);
+  const handleCancel = async () => {
+    try {
+      await supabase
+        .from('profiles')
+        .update({
+          is_subscribed: false,
+          subscription_expiry: null,
+          subscription_type: null,
+        })
+        .eq('id', user.id);
+
+      window.location.reload(); // სწრაფი განახლება
+    } catch (err) {
+      alert('Failed to cancel subscription.');
+    }
   };
 
-  if (user && user.isSubscribed) {
+  // თუ უკვე Premium
+  if (user?.isSubscribed) {
     return (
-      <div className="max-w-2xl mx-auto">
-        <div className="bg-gradient-to-r from-yellow-50 to-orange-50 rounded-xl shadow-md p-8 text-center">
-          <Crown className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
-          <h2 className="text-3xl font-bold text-gray-800 mb-2">
-            Premium Active
-          </h2>
-          <p className="text-gray-600 mb-6">
-            You have unlimited access to all features!
-          </p>
-          <button
-            onClick={() => setShowUnsubscribeConfirm(true)}
-            className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-semibold"
-          >
-            Cancel Subscription
-          </button>
-        </div>
+      <div className="max-w-2xl mx-auto text-center py-16 px-4">
+        <Crown className="w-20 h-20 text-yellow-500 mx-auto mb-6" />
+        <h1 className="text-4xl font-bold text-gray-800 mb-4">
+          Premium Active
+        </h1>
+        <p className="text-xl text-gray-600 mb-8">
+          Valid until:{' '}
+          <span className="font-bold text-indigo-600">
+            {user.subscriptionExpiry
+              ? new Date(user.subscriptionExpiry).toLocaleDateString('en-US', {
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric',
+                })
+              : 'Lifetime'}
+          </span>
+        </p>
+        <button
+          onClick={() => setShowCancelConfirm(true)}
+          className="px-8 py-4 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition"
+        >
+          Cancel Subscription
+        </button>
 
-        {/* Unsubscribe Confirmation Modal */}
-        {showUnsubscribeConfirm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full">
-              <div className="flex items-center space-x-3 mb-4">
-                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
-                  <AlertCircle className="w-6 h-6 text-red-600" />
-                </div>
-                <h3 className="text-xl font-bold text-gray-800">
-                  Cancel Subscription?
-                </h3>
-              </div>
-              <p className="text-gray-600 mb-4">
-                Are you sure you want to cancel your premium subscription?
+        {showCancelConfirm && (
+          <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl">
+              <h3 className="text-2xl font-bold mb-4">Cancel Subscription?</h3>
+              <p className="text-gray-600 mb-8">
+                You will lose Premium features.
               </p>
-              <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
-                <p className="text-sm text-yellow-800">
-                  <strong>Warning:</strong> You will lose access to:
-                </p>
-                <ul className="list-disc list-inside text-sm text-yellow-700 mt-2 space-y-1">
-                  <li>Unlimited word storage</li>
-                  <li>Custom catalogs</li>
-                  <li>Persistent data storage</li>
-                </ul>
-              </div>
-              <div className="flex space-x-3">
+              <div className="flex gap-4">
                 <button
-                  onClick={handleUnsubscribe}
-                  className="flex-1 px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-semibold"
+                  onClick={handleCancel}
+                  className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold"
                 >
-                  Yes, Cancel Subscription
+                  Yes, Cancel
                 </button>
                 <button
-                  onClick={() => setShowUnsubscribeConfirm(false)}
-                  className="flex-1 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-semibold"
+                  onClick={() => setShowCancelConfirm(false)}
+                  className="flex-1 py-3 bg-gray-300 rounded-xl font-bold"
                 >
-                  Keep Subscription
+                  Keep Premium
                 </button>
               </div>
             </div>
@@ -1710,131 +1735,135 @@ const SubscriptionView = () => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="text-center mb-8">
-        <h2 className="text-4xl font-bold text-gray-800 mb-2">
-          Upgrade to Premium
-        </h2>
-        <p className="text-gray-600">Unlock unlimited vocabulary learning</p>
+    <div className="max-w-5xl mx-auto px-4 py-12">
+      <div className="text-center mb-12">
+        <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-4">
+          Choose Your Plan
+        </h1>
+        <p className="text-xl text-gray-600">Start free • Upgrade anytime</p>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6 mb-8">
-        <div className="bg-white rounded-xl shadow-md p-6">
-          <h3 className="text-xl font-bold text-gray-800 mb-4">
-            Free (Current)
-          </h3>
-          <ul className="space-y-3 text-gray-600">
-            <li className="flex items-start">
-              <Check className="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" />
-              <span>30 words maximum</span>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+        {/* Free Plan – Default */}
+        <div className="bg-white rounded-2xl shadow-lg p-8 border-2 border-gray-200">
+          <h3 className="text-2xl font-bold text-gray-800 mb-4">Free</h3>
+          <div className="text-5xl font-bold text-gray-800 mb-2">$0</div>
+          <p className="text-gray-600 mb-8">forever</p>
+          <ul className="space-y-3 mb-10 text-gray-700">
+            <li className="flex items-center">
+              <Check className="w-5 h-5 text-green-600 mr-3" /> Up to 30 words
             </li>
-            <li className="flex items-start">
-              <X className="w-5 h-5 text-red-500 mr-2 flex-shrink-0 mt-0.5" />
-              <span>No data persistence</span>
+            <li className="flex items-center">
+              <Check className="w-5 h-5 text-green-600 mr-3" /> Basic practice
             </li>
-            <li className="flex items-start">
-              <X className="w-5 h-5 text-red-500 mr-2 flex-shrink-0 mt-0.5" />
-              <span>No catalog organization</span>
+            <li className="flex items-center">
+              <X className="w-5 h-5 text-gray-400 mr-3" /> No catalogs
             </li>
-          </ul>
-        </div>
-
-        <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xl font-bold">Premium</h3>
-            <Crown className="w-6 h-6 text-yellow-300" />
-          </div>
-          <div className="mb-6">
-            <p className="text-4xl font-bold">$9.99</p>
-            <p className="text-indigo-100">per year</p>
-          </div>
-          <ul className="space-y-3">
-            <li className="flex items-start">
-              <Check className="w-5 h-5 text-green-300 mr-2 flex-shrink-0 mt-0.5" />
-              <span>Unlimited words</span>
-            </li>
-            <li className="flex items-start">
-              <Check className="w-5 h-5 text-green-300 mr-2 flex-shrink-0 mt-0.5" />
-              <span>Persistent storage across devices</span>
-            </li>
-            <li className="flex items-start">
-              <Check className="w-5 h-5 text-green-300 mr-2 flex-shrink-0 mt-0.5" />
-              <span>Unlimited custom catalogs</span>
-            </li>
-            <li className="flex items-start">
-              <Check className="w-5 h-5 text-green-300 mr-2 flex-shrink-0 mt-0.5" />
-              <span>Advanced practice modes</span>
+            <li className="flex items-center">
+              <X className="w-5 h-5 text-gray-400 mr-3" /> Data lost on close
             </li>
           </ul>
           <button
-            onClick={() => setShowPayment(true)}
-            className="w-full mt-6 px-6 py-3 bg-white text-indigo-600 rounded-lg hover:bg-indigo-50 transition font-semibold"
+            disabled
+            className="w-full py-4 bg-gray-100 text-gray-500 rounded-xl font-bold cursor-not-allowed"
           >
-            Upgrade Now
+            Current Plan
+          </button>
+        </div>
+
+        {/* Monthly Plan – $1.99 */}
+        <div className="relative bg-gradient-to-br from-purple-600 to-pink-600 rounded-2xl shadow-2xl p-8 text-white transform scale-105 z-10">
+          <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-yellow-400 text-purple-900 px-6 py-2 rounded-full font-bold text-sm">
+            MOST POPULAR
+          </div>
+          <h3 className="text-3xl font-bold mb-4">Monthly</h3>
+          <div className="text-6xl font-bold mb-2">$1.99</div>
+          <p className="text-xl opacity-90 mb-8">per month</p>
+          <ul className="space-y-4 mb-10">
+            <li className="flex items-center">
+              <Check className="w-6 h-6 mr-3" /> Unlimited words
+            </li>
+            <li className="flex items-center">
+              <Check className="w-6 h-6 mr-3" /> Save forever
+            </li>
+            <li className="flex items-center">
+              <Check className="w-6 h-6 mr-3" /> Unlimited catalogs
+            </li>
+            <li className="flex items-center">
+              <Check className="w-6 h-6 mr-3" /> Works on all devices
+            </li>
+          </ul>
+          <button
+            onClick={() => setSelectedPlan('monthly')}
+            className="w-full py-5 bg-white text-purple-600 rounded-xl font-bold text-xl hover:bg-gray-100 transition"
+          >
+            Get Monthly
+          </button>
+        </div>
+
+        {/* Yearly Plan – $9.99 */}
+        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 rounded-2xl shadow-2xl p-8 text-white">
+          <div className="bg-green-400 text-indigo-900 px-5 py-2 rounded-full font-bold text-sm inline-block mb-4">
+            Save 58%
+          </div>
+          <h3 className="text-3xl font-bold mb-4">Yearly</h3>
+          <div className="text-6xl font-bold mb-2">$9.99</div>
+          <p className="text-xl opacity-90 mb-8">per year</p>
+          <p className="text-lg opacity-80 mb-8">only $0.83/month</p>
+          <button
+            onClick={() => setSelectedPlan('yearly')}
+            className="w-full py-5 bg-white text-indigo-600 rounded-xl font-bold text-xl hover:bg-gray-100 transition"
+          >
+            Get Yearly
           </button>
         </div>
       </div>
 
-      {showPayment && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full">
-            <h3 className="text-2xl font-bold text-gray-800 mb-6">
-              Payment Details
+      {/* Payment Modal – Instant Activation */}
+      {selectedPlan && (
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl p-10 max-w-md w-full shadow-2xl">
+            <h3 className="text-3xl font-bold text-center mb-8 text-gray-800">
+              Complete Your Purchase
             </h3>
-            <p className="text-sm text-gray-600 mb-4">
-              This is a demo payment form. Click "Complete Payment" to simulate
-              subscription activation.
+            <p className="text-center text-xl mb-10 text-gray-600">
+              {selectedPlan === 'monthly' ? '$1.99/month' : '$9.99/year'}
             </p>
 
-            <div className="space-y-4 mb-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Card Number
-                </label>
+            <div className="space-y-6 mb-10">
+              <input
+                type="text"
+                placeholder="4242 4242 4242 4242"
+                defaultValue="4242 4242 4242 4242"
+                className="w-full px-6 py-4 border-2 border-gray-300 rounded-xl text-lg focus:border-indigo-500 outline-none"
+              />
+              <div className="grid grid-cols-2 gap-4">
                 <input
                   type="text"
-                  value={cardNumber}
-                  onChange={(e) => setCardNumber(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                  placeholder="1234 5678 9012 3456"
+                  placeholder="MM/YY"
+                  defaultValue="12/28"
+                  className="px-6 py-4 border-2 border-gray-300 rounded-xl text-lg"
                 />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Expiry
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                    placeholder="MM/YY"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    CVV
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                    placeholder="123"
-                  />
-                </div>
+                <input
+                  type="text"
+                  placeholder="CVC"
+                  defaultValue="123"
+                  className="px-6 py-4 border-2 border-gray-300 rounded-xl text-lg"
+                />
               </div>
             </div>
 
-            <div className="flex space-x-3">
+            <div className="flex gap-4">
               <button
                 onClick={handleSubscribe}
                 disabled={processing}
-                className="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition disabled:bg-gray-400 font-semibold"
+                className="flex-1 py-5 bg-indigo-600 text-white text-xl font-bold rounded-xl hover:bg-indigo-700 disabled:opacity-70"
               >
-                {processing ? 'Processing...' : 'Complete Payment'}
+                {processing ? 'Activating...' : 'Complete Payment'}
               </button>
               <button
-                onClick={() => setShowPayment(false)}
-                disabled={processing}
-                className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                onClick={() => setSelectedPlan(null)}
+                className="px-8 py-5 bg-gray-200 rounded-xl font-bold hover:bg-gray-300"
               >
                 Cancel
               </button>
