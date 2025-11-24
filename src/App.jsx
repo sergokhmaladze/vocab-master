@@ -11,6 +11,10 @@ import {
   X,
   Check,
   AlertCircle,
+  Zap,
+  Menu,
+  Infinity,
+  FolderOpen,
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
@@ -529,6 +533,10 @@ const VocabApp = () => {
         {currentView === 'auth' && <AuthView setCurrentView={setCurrentView} />}
 
         {currentView === 'subscription' && <SubscriptionView />}
+
+        {currentView === 'about' && <AboutView />}
+
+        {currentView === 'contact' && <ContactView />}
       </main>
     </div>
   );
@@ -537,16 +545,27 @@ const VocabApp = () => {
 // Header Component
 const Header = ({ currentView, setCurrentView, darkMode, setDarkMode }) => {
   const { user, logout } = useAuth();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const navItems = [
+    { name: 'My Words', view: 'words' },
+    { name: 'Practice', view: 'practice', icon: <Play className="w-4 h-4" /> },
+    ...(user?.isSubscribed ? [{ name: 'Catalogs', view: 'catalogs' }] : []),
+    ...(user?.isSubscribed ? [{ name: 'Account', view: 'subscription' }] : []),
+    { name: 'About', view: 'about' },
+    { name: 'Contact', view: 'contact' },
+  ];
 
   return (
     <header
       className={`shadow-md transition-colors duration-300 ${
         darkMode ? 'bg-gray-800' : 'bg-white'
-      }`}
+      } sticky top-0 z-40`}
     >
       <div className="container mx-auto px-4 py-4 max-w-6xl">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center space-x-2">
+        <div className="flex items-center justify-between">
+          {/* Logo */}
+          <div className="flex items-center space-x-3">
             <Book
               className={`w-8 h-8 ${
                 darkMode ? 'text-indigo-400' : 'text-indigo-600'
@@ -559,21 +578,38 @@ const Header = ({ currentView, setCurrentView, darkMode, setDarkMode }) => {
             >
               VocabMaster
             </h1>
-            {user && user.isSubscribed && (
+            {user?.isSubscribed && (
               <Crown className="w-5 h-5 text-yellow-500" />
             )}
           </div>
 
-          <nav className="flex items-center space-x-2 md:space-x-4 flex-wrap">
-            {/* Dark Mode Toggle */}
+          {/* Desktop Menu */}
+          <nav className="hidden md:flex items-center space-x-2">
+            {navItems.map((item) => (
+              <button
+                key={item.view}
+                onClick={() => setCurrentView(item.view)}
+                className={`px-4 py-2 rounded-lg transition text-sm font-medium flex items-center space-x-1 ${
+                  currentView === item.view
+                    ? 'bg-indigo-600 text-white'
+                    : darkMode
+                    ? 'text-gray-300 hover:bg-gray-700'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {item.icon && item.icon}
+                <span>{item.name}</span>
+              </button>
+            ))}
+
+            {/* Dark Mode + Auth */}
             <button
               onClick={() => setDarkMode(!darkMode)}
               className={`p-2 rounded-lg transition ${
                 darkMode
-                  ? 'bg-gray-700 text-yellow-400 hover:bg-gray-600'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-gray-700 text-yellow-400'
+                  : 'bg-gray-100 text-gray-700'
               }`}
-              title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
             >
               {darkMode ? (
                 <svg
@@ -594,94 +630,141 @@ const Header = ({ currentView, setCurrentView, darkMode, setDarkMode }) => {
               )}
             </button>
 
-            <button
-              onClick={() => setCurrentView('words')}
-              className={`px-3 md:px-4 py-2 rounded-lg transition text-sm md:text-base ${
-                currentView === 'words'
-                  ? 'bg-indigo-600 text-white'
-                  : darkMode
-                  ? 'text-gray-300 hover:bg-gray-700'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              My Words
-            </button>
-
-            {user && user.isSubscribed && (
-              <button
-                onClick={() => setCurrentView('catalogs')}
-                className={`px-3 md:px-4 py-2 rounded-lg transition text-sm md:text-base ${
-                  currentView === 'catalogs'
-                    ? 'bg-indigo-600 text-white'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                Catalogs
-              </button>
-            )}
-
-            {user && user.isSubscribed && (
-              <button
-                onClick={() => setCurrentView('subscription')}
-                className={`px-3 md:px-4 py-2 rounded-lg transition text-sm md:text-base ${
-                  currentView === 'subscription'
-                    ? 'bg-indigo-600 text-white'
-                    : darkMode
-                    ? 'text-gray-300 hover:bg-gray-700'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                Account
-              </button>
-            )}
-
-            <button
-              onClick={() => setCurrentView('practice')}
-              className={`px-3 md:px-4 py-2 rounded-lg transition text-sm md:text-base flex items-center ${
-                currentView === 'practice'
-                  ? 'bg-indigo-600 text-white'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <Play className="w-4 h-4 md:w-5 md:h-5 mr-1" />
-              Practice
-            </button>
-
             {user ? (
-              <div className="flex items-center space-x-2 md:space-x-3">
-                <span
-                  className={`text-xs md:text-sm hidden sm:inline ${
-                    darkMode ? 'text-gray-300' : 'text-gray-600'
-                  }`}
-                >
-                  {user.email}
-                </span>
+              <div className="flex items-center space-x-3">
                 {!user.isSubscribed && (
                   <button
                     onClick={() => setCurrentView('subscription')}
-                    className="px-3 md:px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition text-sm md:text-base"
+                    className="px-5 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 font-bold"
                   >
                     Upgrade
                   </button>
                 )}
                 <button
                   onClick={logout}
-                  className="p-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                  className="p-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
                 >
-                  <LogOut className="w-4 h-4 md:w-5 md:h-5" />
+                  <LogOut className="w-5 h-5" />
                 </button>
               </div>
             ) : (
               <button
                 onClick={() => setCurrentView('auth')}
-                className="px-3 md:px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm md:text-base flex items-center"
+                className="px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center space-x-2 font-medium"
               >
-                <LogIn className="w-4 h-4 md:w-5 md:h-5 mr-1" />
-                Login
+                <LogIn className="w-5 h-5" />
+                <span>Login</span>
               </button>
             )}
           </nav>
+
+          {/* Mobile Menu Button */}
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className={`md:hidden p-2 rounded-lg ${
+              darkMode ? 'text-gray-300' : 'text-gray-700'
+            }`}
+          >
+            {mobileMenuOpen ? (
+              <X className="w-6 h-6" />
+            ) : (
+              <svg
+                className="w-6 h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 6h16M4 12h16M4 18h16"
+                />
+              </svg>
+            )}
+          </button>
         </div>
+
+        {/* Mobile Dropdown Menu */}
+        {mobileMenuOpen && (
+          <div
+            className={`md:hidden mt-4 pb-4 border-t ${
+              darkMode ? 'border-gray-700' : 'border-gray-200'
+            }`}
+          >
+            <nav className="flex flex-col space-y-2 mt-4">
+              {navItems.map((item) => (
+                <button
+                  key={item.view}
+                  onClick={() => {
+                    setCurrentView(item.view);
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`px-4 py-3 rounded-lg text-left flex items-center space-x-2 ${
+                    currentView === item.view
+                      ? 'bg-indigo-600 text-white'
+                      : darkMode
+                      ? 'text-gray-300 hover:bg-gray-700'
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  {item.icon && item.icon}
+                  <span className="font-medium">{item.name}</span>
+                </button>
+              ))}
+
+              {/* Mobile Auth Section */}
+              <div className="pt-4 border-t border-gray-300 mt-4">
+                <div className="flex items-center justify-between px-4 py-3">
+                  <span className="text-sm text-gray-600">Dark Mode</span>
+                  <button
+                    onClick={() => setDarkMode(!darkMode)}
+                    className={`p-2 rounded-lg ${
+                      darkMode ? 'bg-gray-700 text-yellow-400' : 'bg-gray-200'
+                    }`}
+                  >
+                    {darkMode ? 'Sun' : 'Moon'}
+                  </button>
+                </div>
+
+                {user ? (
+                  <>
+                    {!user.isSubscribed && (
+                      <button
+                        onClick={() => {
+                          setCurrentView('subscription');
+                          setMobileMenuOpen(false);
+                        }}
+                        className="w-full px-4 py-3 bg-yellow-500 text-white rounded-lg font-bold text-left mt-2"
+                      >
+                        Upgrade to Premium
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        logout();
+                        setMobileMenuOpen(false);
+                      }}
+                      className="w-full px-4 py-3 text-red-600 font-medium text-left mt-2"
+                    >
+                      Logout
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setCurrentView('auth');
+                      setMobileMenuOpen(false);
+                    }}
+                    className="w-full px-4 py-3 bg-indigo-600 text-white rounded-lg font-bold text-left mt-2"
+                  >
+                    Login / Register
+                  </button>
+                )}
+              </div>
+            </nav>
+          </div>
+        )}
       </div>
     </header>
   );
@@ -1630,7 +1713,7 @@ const AuthView = ({ setCurrentView }) => {
 };
 
 // Subscription View
-// Subscription View – სრულიად ახალი, სწრაფი, მომუშავე
+
 const SubscriptionView = () => {
   const { user, subscribe } = useAuth();
   const [selectedPlan, setSelectedPlan] = useState(null);
@@ -1871,6 +1954,110 @@ const SubscriptionView = () => {
           </div>
         </div>
       )}
+    </div>
+  );
+};
+
+// About View — მობილურზე ლამაზი
+const AboutView = () => {
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-indigo-50 via-purple-50 to-pink-50 px-6 py-12">
+      <div className="max-w-6xl mx-auto text-center">
+        {/* Title */}
+        <div className="mb-16">
+          <Book className="w-16 h-16 md:w-20 md:h-20 text-indigo-600 mx-auto mb-6" />
+          <h1 className="text-4xl md:text-6xl font-bold text-gray-800 mb-6 leading-tight">
+            About VocabMaster
+          </h1>
+          <p className="text-lg md:text-xl text-gray-700 max-w-3xl mx-auto leading-relaxed">
+            A simple, powerful, and beautiful tool to help you master English
+            vocabulary with Georgian translations — fast and effectively.
+          </p>
+        </div>
+
+        {/* Colorful Feature Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+          {/* Card 1 */}
+          <div className="bg-gradient-to-br from-purple-500 to-pink-500 rounded-3xl p-8 text-white shadow-2xl transform hover:scale-105 transition duration-300">
+            <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Infinity className="w-10 h-10" />
+            </div>
+            <h3 className="text-2xl md:text-3xl font-bold mb-4">
+              Unlimited Words
+            </h3>
+            <p className="text-lg opacity-95">
+              Save as many words as you want with Premium
+            </p>
+          </div>
+
+          {/* Card 2 */}
+          <div className="bg-gradient-to-br from-indigo-500 to-blue-500 rounded-3xl p-8 text-white shadow-2xl transform hover:scale-105 transition duration-300">
+            <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Zap className="w-10 h-10" />
+            </div>
+            <h3 className="text-2xl md:text-3xl font-bold mb-4">
+              Smart Practice
+            </h3>
+            <p className="text-lg opacity-95">
+              Test yourself with instant feedback
+            </p>
+          </div>
+
+          {/* Card 3 */}
+          <div className="bg-gradient-to-br from-green-500 to-emerald-500 rounded-3xl p-8 text-white shadow-2xl transform hover:scale-105 transition duration-300">
+            <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <FolderOpen className="w-10 h-10" />
+            </div>
+            <h3 className="text-2xl md:text-3xl font-bold mb-4">
+              Organized Catalogs
+            </h3>
+            <p className="text-lg opacity-95">Group words by topic or level</p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <p className="mt-20 text-xl text-gray-700">
+          Made with <span className="text-red-500 text-3xl">❤</span> in Georgia
+          <span className="text-gray-500"> • For learners, by a learner</span>
+        </p>
+      </div>
+    </div>
+  );
+};
+
+// Contact View — მობილურზე იდეალური
+const ContactView = () => {
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-purple-50 to-pink-50 px-6 py-20">
+      <div className="max-w-2xl mx-auto text-center">
+        <h1 className="text-5xl md:text-6xl font-bold text-gray-800 mb-8">
+          Contact Us
+        </h1>
+
+        <p className="text-xl md:text-2xl text-gray-700 mb-16 leading-relaxed">
+          Have a question, suggestion, or just want to say hello?
+          <br className="hidden md:block" />
+          We'd love to hear from you!
+        </p>
+
+        <div className="bg-white rounded-3xl shadow-2xl p-12">
+          <a
+            href="mailto:support@vocabmaster.app"
+            className="block text-2xl md:text-3xl lg:text-4xl font-bold text-indigo-600 hover:text-indigo-700 transition 
+                       break-all tracking-tight leading-tight  decoration-4 underline-offset-8"
+          >
+            sergo.khmaladze@gmail.com
+          </a>
+
+          <p className="text-gray-600 mt-8 text-lg">
+            We usually reply within a few hours
+          </p>
+        </div>
+
+        <p className="text-gray-500 mt-16 text-sm">
+          Made with <span className="text-red-500">❤</span> in Georgia
+        </p>
+      </div>
     </div>
   );
 };
