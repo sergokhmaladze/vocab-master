@@ -1352,8 +1352,10 @@ const CatalogsView = ({
 };
 
 // Practice View
+// Practice View — ახალი ვერსია (ორი მიმართულებით)
 const PracticeView = ({ words, catalogs }) => {
   const [selectedCatalog, setSelectedCatalog] = useState('all');
+  const [practiceDirection, setPracticeDirection] = useState('en-to-ka'); // ახალი: მიმართულება
   const [isActive, setIsActive] = useState(false);
   const [currentWord, setCurrentWord] = useState(null);
   const [answer, setAnswer] = useState('');
@@ -1372,16 +1374,14 @@ const PracticeView = ({ words, catalogs }) => {
     const availableWords = practiceWords.filter(
       (w) => !usedWords.includes(w.id)
     );
-
     if (availableWords.length === 0) {
       setUsedWords([]);
       return practiceWords[Math.floor(Math.random() * practiceWords.length)];
     }
-
-    const randomWord =
-      availableWords[Math.floor(Math.random() * availableWords.length)];
-    setUsedWords([...usedWords, randomWord.id]);
-    return randomWord;
+    const randomIndex = Math.floor(Math.random() * availableWords.length);
+    const word = availableWords[randomIndex];
+    setUsedWords([...usedWords, word.id]);
+    return word;
   };
 
   const startPractice = () => {
@@ -1390,6 +1390,7 @@ const PracticeView = ({ words, catalogs }) => {
     setScore({ correct: 0, total: 0 });
     setUsedWords([]);
     setFeedback(null);
+    setAnswer('');
     const word = getRandomWord();
     setCurrentWord(word);
   };
@@ -1397,8 +1398,13 @@ const PracticeView = ({ words, catalogs }) => {
   const checkAnswer = () => {
     if (!answer.trim() || !currentWord) return;
 
-    const isCorrect =
-      answer.trim().toLowerCase() === currentWord.georgian.toLowerCase();
+    const correctAnswer =
+      practiceDirection === 'en-to-ka'
+        ? currentWord.georgian.toLowerCase()
+        : currentWord.english.toLowerCase();
+
+    const isCorrect = answer.trim().toLowerCase() === correctAnswer;
+
     setScore((prev) => ({
       correct: prev.correct + (isCorrect ? 1 : 0),
       total: prev.total + 1,
@@ -1410,11 +1416,13 @@ const PracticeView = ({ words, catalogs }) => {
     setAnswer('');
     setFeedback(null);
     const nextWord = getRandomWord();
-    setCurrentWord(nextWord);
+    if (nextWord) {
+      setCurrentWord(nextWord);
+    }
   };
 
   const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && answer.trim()) {
+    if (e.key === 'Enter' && answer.trim() && !feedback) {
       checkAnswer();
     }
   };
@@ -1424,6 +1432,7 @@ const PracticeView = ({ words, catalogs }) => {
     setCurrentWord(null);
     setAnswer('');
     setFeedback(null);
+    setUsedWords([]);
   };
 
   if (words.length === 0) {
@@ -1440,21 +1449,53 @@ const PracticeView = ({ words, catalogs }) => {
 
   if (!isActive) {
     return (
-      <div className="bg-white rounded-xl shadow-md p-8">
-        <h2 className="text-2xl font-bold text-gray-800 mb-6">Practice Mode</h2>
+      <div className="bg-white rounded-xl shadow-md p-8 max-w-2xl mx-auto">
+        <h2 className="text-3xl font-bold text-gray-800 mb-8 text-center">
+          Practice Mode
+        </h2>
 
-        <div className="mb-6">
+        {/* მიმართულების არჩევა */}
+        <div className="mb-8">
+          <label className="block text-lg font-semibold text-gray-700 mb-4 text-center">
+            Choose Practice Direction:
+          </label>
+          <div className="flex justify-center gap-4">
+            <button
+              onClick={() => setPracticeDirection('en-to-ka')}
+              className={`px-8 py-4 rounded-xl font-bold text-lg transition ${
+                practiceDirection === 'en-to-ka'
+                  ? 'bg-indigo-600 text-white shadow-lg'
+                  : 'bg-gray-200 text-gray-700'
+              }`}
+            >
+              English → Georgian
+            </button>
+            <button
+              onClick={() => setPracticeDirection('ka-to-en')}
+              className={`px-8 py-4 rounded-xl font-bold text-lg transition ${
+                practiceDirection === 'ka-to-en'
+                  ? 'bg-indigo-600 text-white shadow-lg'
+                  : 'bg-gray-200 text-gray-700'
+              }`}
+            >
+              Georgian → English
+            </button>
+          </div>
+        </div>
+
+        {/* კატალოგის არჩევა */}
+        <div className="mb-8">
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Select Catalog to Practice:
+            Select Catalog:
           </label>
           <select
             value={selectedCatalog}
             onChange={(e) => setSelectedCatalog(e.target.value)}
-            className="w-full md:w-64 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
           >
             <option value="all">All Words ({words.length})</option>
             <option value="uncategorized">
-              Uncategorized ({words.filter((w) => !w.catalogId).length})
+              Uncategorized ({words.filter((w) => !w.catalog_id).length})
             </option>
             {catalogs.map((cat) => {
               const count = words.filter((w) => w.catalog_id === cat.id).length;
@@ -1467,138 +1508,145 @@ const PracticeView = ({ words, catalogs }) => {
           </select>
         </div>
 
-        <div className="bg-blue-50 p-6 rounded-lg mb-6">
-          <h3 className="font-semibold text-gray-800 mb-2">How it works:</h3>
-          <ul className="list-disc list-inside text-gray-700 space-y-1 text-sm">
-            <li>You'll see an English word</li>
-            <li>Type the Georgian translation</li>
-            <li>Get instant feedback on your answer</li>
-            <li>Track your progress with the score counter</li>
-          </ul>
+        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-6 rounded-xl mb-8 text-center">
+          <p className="text-lg font-medium text-gray-800">
+            {practiceDirection === 'en-to-ka'
+              ? 'You will see English words → type Georgian'
+              : 'You will see Georgian words → type English'}
+          </p>
         </div>
 
         <button
           onClick={startPractice}
           disabled={practiceWords.length === 0}
-          className="w-full md:w-auto px-8 py-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center space-x-2 text-lg font-semibold"
+          className="w-full py-5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-2xl font-bold rounded-xl hover:from-indigo-700 hover:to-purple-700 transition shadow-xl disabled:opacity-50"
         >
-          <Play className="w-6 h-6" />
-          <span>Start Practice</span>
+          Start Practice
         </button>
-
-        {practiceWords.length === 0 && (
-          <p className="text-red-600 mt-4 text-sm">
-            No words in selected catalog
-          </p>
-        )}
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-md p-8">
-      <div className="flex justify-between items-center mb-8">
-        <div className="flex items-center space-x-6">
-          <div className="text-center">
-            <p className="text-sm text-gray-600">Correct</p>
-            <p className="text-3xl font-bold text-green-600">{score.correct}</p>
-          </div>
-          <div className="text-center">
-            <p className="text-sm text-gray-600">Total</p>
-            <p className="text-3xl font-bold text-gray-800">{score.total}</p>
-          </div>
-          <div className="text-center">
-            <p className="text-sm text-gray-600">Accuracy</p>
-            <p className="text-3xl font-bold text-indigo-600">
-              {score.total > 0
-                ? Math.round((score.correct / score.total) * 100)
-                : 0}
-              %
-            </p>
-          </div>
+    <div className="bg-white rounded-xl shadow-md p-8 max-w-2xl mx-auto">
+      {/* ქულები */}
+      <div className="flex justify-between items-center mb-8 bg-gray-50 rounded-xl p-6">
+        <div className="text-center flex-1">
+          <p className="text-sm text-gray-600">Correct</p>
+          <p className="text-4xl font-bold text-green-600">{score.correct}</p>
         </div>
-        <button
-          onClick={endPractice}
-          className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
-        >
-          End Practice
-        </button>
+        <div className="text-center flex-1">
+          <p className="text-sm text-gray-600">Total</p>
+          <p className="text-4xl font-bold text-gray-800">{score.total}</p>
+        </div>
+        <div className="text-center flex-1">
+          <p className="text-sm text-gray-600">Accuracy</p>
+          <p className="text-4xl font-bold text-indigo-600">
+            {score.total > 0
+              ? Math.round((score.correct / score.total) * 100)
+              : 0}
+            %
+          </p>
+        </div>
       </div>
 
+      {/* სიტყვა */}
       {currentWord && (
-        <div className="max-w-2xl mx-auto">
-          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-8 rounded-xl mb-6 text-center">
-            <p className="text-sm text-gray-600 mb-2">Translate this word:</p>
-            <h3 className="text-4xl font-bold text-gray-800 mb-2">
-              {currentWord.english}
-            </h3>
-            <p className="text-sm text-gray-500">
-              Type the Georgian translation
-            </p>
-          </div>
-
-          <div className="space-y-4">
-            <input
-              type="text"
-              value={answer}
-              onChange={(e) => setAnswer(e.target.value)}
-              onKeyPress={handleKeyPress}
-              disabled={feedback !== null}
-              className="w-full px-6 py-4 text-2xl border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-100"
-              placeholder="Type Georgian translation..."
-              autoFocus
-            />
-
-            {feedback === null ? (
-              <button
-                onClick={checkAnswer}
-                disabled={!answer.trim()}
-                className="w-full px-6 py-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed text-lg font-semibold"
-              >
-                Check Answer
-              </button>
-            ) : (
-              <div>
-                <div
-                  className={`p-6 rounded-lg text-center mb-4 ${
-                    feedback === 'correct' ? 'bg-green-50' : 'bg-red-50'
-                  }`}
-                >
-                  {feedback === 'correct' ? (
-                    <div className="flex items-center justify-center space-x-2">
-                      <Check className="w-8 h-8 text-green-600" />
-                      <span className="text-2xl font-bold text-green-700">
-                        Correct!
-                      </span>
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="flex items-center justify-center space-x-2 mb-2">
-                        <X className="w-8 h-8 text-red-600" />
-                        <span className="text-2xl font-bold text-red-700">
-                          Incorrect
-                        </span>
-                      </div>
-                      <p className="text-gray-700">
-                        Correct answer:{' '}
-                        <span className="font-bold text-xl">
-                          {currentWord.georgian}
-                        </span>
-                      </p>
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={goToNextWord}
-                  className="w-full px-6 py-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-lg font-semibold"
-                >
-                  Next Word →
-                </button>
-              </div>
-            )}
-          </div>
+        <div className="text-center mb-10">
+          <p className="text-sm text-gray-500 mb-4">
+            Type the translation in{' '}
+            <strong>
+              {practiceDirection === 'en-to-ka' ? 'Georgian' : 'English'}
+            </strong>
+          </p>
+          <h3 className="text-6xl font-bold text-indigo-600 break-words">
+            {practiceDirection === 'en-to-ka'
+              ? currentWord.english
+              : currentWord.georgian}
+          </h3>
         </div>
       )}
+
+      {/* პასუხი */}
+      <div className="space-y-6">
+        <input
+          type="text"
+          value={answer}
+          onChange={(e) => {
+            let value = e.target.value;
+
+            if (practiceDirection === 'en-to-ka') {
+              // მხოლოდ ქართული ასოები + სივრცე
+              if (/^[\u10A0-\u10FF\s]*$/.test(value)) {
+                setAnswer(value);
+              }
+            } else {
+              // მხოლოდ ინგლისური ასოები + სივრცე
+              if (/^[a-zA-Z\s]*$/.test(value)) {
+                setAnswer(value);
+              }
+            }
+          }}
+          onKeyDown={handleKeyPress}
+          disabled={!!feedback}
+          placeholder={
+            practiceDirection === 'en-to-ka'
+              ? 'ჩაწერე ქართულად...'
+              : 'Type in English...'
+          }
+          className="w-full px-8 py-6 text-3xl text-center border-4 border-indigo-200 rounded-2xl focus:border-indigo-600 outline-none transition font-georgian"
+          autoFocus
+        />
+
+        {feedback === null ? (
+          <button
+            onClick={checkAnswer}
+            disabled={!answer.trim()}
+            className="w-full py-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-2xl font-bold rounded-2xl hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 transition"
+          >
+            Check Answer
+          </button>
+        ) : (
+          <div>
+            <div
+              className={`p-8 rounded-2xl text-center mb-6 text-6xl font-bold ${
+                feedback === 'correct'
+                  ? 'bg-green-100 text-green-600'
+                  : 'bg-red-100 text-red-600'
+              }`}
+            >
+              {feedback === 'correct' ? 'Perfect!' : 'Incorrect!'}
+            </div>
+
+            {feedback === 'incorrect' && (
+              <div className="bg-red-50 border-2 border-red-200 rounded-xl p-6 mb-6 text-center">
+                <p className="text-2xl font-bold text-red-700 mb-2">
+                  Correct answer:
+                </p>
+                <p className="text-4xl font-bold text-gray-800">
+                  {practiceDirection === 'en-to-ka'
+                    ? currentWord.georgian
+                    : currentWord.english}
+                </p>
+              </div>
+            )}
+
+            <button
+              onClick={goToNextWord}
+              className="w-full py-6 bg-gradient-to-r from-green-500 to-emerald-600 text-white text-2xl font-bold rounded-2xl hover:from-green-600 hover:to-emerald-700 transition"
+            >
+              Next Word →
+            </button>
+          </div>
+        )}
+      </div>
+
+      <button
+        onClick={endPractice}
+        className="w-full mt-8 py-4 bg-gray-200 text-gray-700 text-lg font-bold rounded-xl hover:bg-gray-300 transition"
+      >
+        End Practice
+      </button>
     </div>
   );
 };
