@@ -203,35 +203,33 @@ const AuthProvider = ({ children }) => {
 
   // AuthProvider-ში
   const subscribe = async (plan = 'yearly') => {
-    if (!user) return;
+    if (!user) throw new Error('მომხმარებელი არ არის');
 
     const days = plan === 'monthly' ? 30 : 365;
     const expiry = new Date(
       Date.now() + days * 24 * 60 * 60 * 1000
     ).toISOString();
 
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          is_subscribed: true,
-          subscription_expiry: expiry,
-          subscription_type: plan, // აუცილებელია
-        })
-        .eq('id', user.id);
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        is_subscribed: true,
+        subscription_expiry: expiry,
+        subscription_type: plan,
+      })
+      .eq('id', user.id);
 
-      if (error) throw error;
-
-      // სწრაფად განვაახლოთ user state
-      setUser((prev) => ({
-        ...prev,
-        isSubscribed: true,
-        subscriptionExpiry: expiry,
-      }));
-    } catch (err) {
-      console.error('Subscribe error:', err);
-      throw err; // მნიშვნელოვანია, რომ handleSubscribe-მა დაინახოს
+    if (error) {
+      console.error('Subscribe error:', error);
+      throw error; // აუცილებელია!
     }
+
+    // მაშინვე განვაახლოთ ლოკალური user
+    setUser((prev) => ({
+      ...prev,
+      isSubscribed: true,
+      subscriptionExpiry: expiry,
+    }));
   };
 
   const unsubscribe = async () => {
@@ -297,6 +295,20 @@ const VocabApp = () => {
       document.documentElement.classList.remove('dark');
     }
   }, [darkMode]);
+
+  // ავტომატურად გავაუქმოთ თუ ვადა გავიდა
+  useEffect(() => {
+    if (user?.isSubscribed && user.subscriptionExpiry) {
+      if (new Date(user.subscriptionExpiry) < new Date()) {
+        setUser((prev) => ({
+          ...prev,
+          isSubscribed: false,
+          subscriptionExpiry: null,
+          subscription_type: null,
+        }));
+      }
+    }
+  }, [user?.isSubscribed, user?.subscriptionExpiry]);
 
   const loadUserData = async () => {
     if (!user || !user.isSubscribed) return;
@@ -1599,24 +1611,71 @@ const PracticeView = ({ words, catalogs }) => {
         />
 
         {feedback === null ? (
-          <button
-            onClick={checkAnswer}
-            disabled={!answer.trim()}
-            className="w-full py-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-2xl font-bold rounded-2xl hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 transition"
-          >
-            Check Answer
-          </button>
-        ) : (
-          <div>
-            <div
-              className={`p-8 rounded-2xl text-center mb-6 text-6xl font-bold ${
-                feedback === 'correct'
-                  ? 'bg-green-100 text-green-600'
-                  : 'bg-red-100 text-red-600'
-              }`}
+          <div className="space-y-4">
+            {/* Check Answer — განახევრებული */}
+            <button
+              onClick={checkAnswer}
+              disabled={!answer.trim()}
+              className="w-full py-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-2xl font-bold rounded-2xl hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 transition shadow-lg"
             >
-              {feedback === 'correct' ? 'Perfect!' : 'Incorrect!'}
+              Check Answer
+            </button>
+
+            {/* Hint და Show Answer — ორი ღილაკი გვერდიგვერდ */}
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                onClick={() => {
+                  if (!currentWord) return;
+                  const correct =
+                    practiceDirection === 'en-to-ka'
+                      ? currentWord.georgian
+                      : currentWord.english;
+                  setAnswer(correct[0]); // მხოლოდ პირველი ასო
+                }}
+                className="py-5 bg-amber-500 hover:bg-amber-600 text-white text-xl font-bold rounded-2xl transition shadow-md flex items-center justify-center gap-2"
+              >
+                Hint (First Letter)
+              </button>
+
+              <button
+                onClick={() => {
+                  if (!currentWord) return;
+                  const correct =
+                    practiceDirection === 'en-to-ka'
+                      ? currentWord.georgian
+                      : currentWord.english;
+                  setAnswer(correct);
+                  // არ ვითვლით როგორც შეცდომას!
+                  setFeedback('shown'); // ახალი სტატუსი — "ნაჩვენებია"
+                  // არ ვამატებთ total-ს აქ — მხოლოდ Next Word-ზე დაჭერისას ჩაითვლება
+                }}
+                className="py-5 bg-red-500 hover:bg-red-600 text-white text-xl font-bold rounded-2xl transition shadow-md flex items-center justify-center gap-2"
+              >
+                Show Answer
+              </button>
             </div>
+          </div>
+        ) : (
+          // feedback ნაწილი უცვლელად რჩება (ქვემოთ)
+          <div>
+            {/* განსხვავებული შეტყობინებები თითოეული სტატუსისთვის */}
+            {feedback === 'correct' && (
+              <div className="p-8 rounded-2xl text-center mb-6 text-6xl font-bold bg-green-100 text-green-600">
+                Perfect!
+              </div>
+            )}
+
+            {feedback === 'incorrect' && (
+              <div className="p-8 rounded-2xl text-center mb-6 text-6xl font-bold bg-red-100 text-red-600">
+                Incorrect!
+              </div>
+            )}
+
+            {feedback === 'shown' && (
+              <div className="p-8 rounded-2xl text-center mb-6 text-6xl font-bold bg-blue-100 text-blue-600">
+                Answer Revealed
+              </div>
+            )}
 
             {feedback === 'incorrect' && (
               <div className="bg-red-50 border-2 border-red-200 rounded-xl p-6 mb-6 text-center">
@@ -1632,10 +1691,16 @@ const PracticeView = ({ words, catalogs }) => {
             )}
 
             <button
-              onClick={goToNextWord}
+              onClick={() => {
+                // თუ Show Answer-ით გამოიყენა — მაინც ჩავთვალოთ როგორც "დასრულებული"
+                if (feedback === 'shown') {
+                  setScore((prev) => ({ ...prev, total: prev.total + 1 })); // მხოლოდ total +1
+                }
+                goToNextWord();
+              }}
               className="w-full py-6 bg-gradient-to-r from-green-500 to-emerald-600 text-white text-2xl font-bold rounded-2xl hover:from-green-600 hover:to-emerald-700 transition"
             >
-              Next Word →
+              Next Word
             </button>
           </div>
         )}
@@ -1771,31 +1836,36 @@ const SubscriptionView = () => {
   const handleSubscribe = async () => {
     if (processing || !selectedPlan) return;
 
-    // 1. მყისიერად ვაჩვენოთ წარმატება (Optimistic UI)
     setProcessing(true);
-    setSelectedPlan(null);
 
-    // მომხმარებელს მაშინვე ვაჩვენოთ, რომ გააქტიურდა
-    alert('Premium activated instantly!');
-
-    // 2. ფონზე გავგზავნოთ Supabase-ში (არ დაველოდოთ)
-    subscribe(selectedPlan).catch((err) => {
-      // თუ რამე შეცდომა მოხდა – მაინც არ გავაუქმოთ UI-ში
-      console.error('Background sync failed:', err);
-      // შეგიძლია აქ toast ან რამე მცირე შეტყობინება
-    });
-
-    // 3. გავაახლოთ გვერდი 1 წამში – რომ სერვერის მონაცემები აისახოს
-    setTimeout(() => {
-      window.location.reload();
-    }, 800);
-
-    setProcessing(false);
-  };
-
-  const handleCancel = async () => {
     try {
-      await supabase
+      await subscribe(selectedPlan);
+
+      alert('Success! Your Premium subscription is now active!');
+
+      // მცირე დაყოვნება + reload
+      setTimeout(() => {
+        window.location.reload();
+      }, 800);
+    } catch (error) {
+      console.error('Subscription error:', error);
+      alert('Subscription failed. Please try again or contact support.');
+
+      // აუცილებლად გავაქროთ "Processing..." თუ შეცდომაა!
+      setProcessing(false);
+    } finally {
+      // ეს აუცილებლად შესრულდება — თუ reload არ მოხდა
+      setSelectedPlan(null);
+    }
+  };
+  const handleCancel = async () => {
+    if (!confirm('Are you sure you want to cancel your Premium subscription?'))
+      return;
+
+    setProcessing(true);
+
+    try {
+      const { error } = await supabase
         .from('profiles')
         .update({
           is_subscribed: false,
@@ -1804,9 +1874,15 @@ const SubscriptionView = () => {
         })
         .eq('id', user.id);
 
-      window.location.reload(); // სწრაფი განახლება
-    } catch (err) {
-      alert('Failed to cancel subscription.');
+      if (error) throw error;
+
+      setTimeout(() => {
+        window.location.reload();
+      }, 800);
+    } catch (error) {
+      console.error('Cancel error:', error);
+      alert('Failed to cancel subscription. Please try again.');
+      setProcessing(false);
     }
   };
 
